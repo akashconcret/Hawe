@@ -1,0 +1,440 @@
+Content Document Download
+
+
+<aura:component controller="OpportunityFileUploadCtrl" implements="lightning:availableForFlowScreens,force:appHostable,flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickAction,forceCommunity:availableForAllPageTypes">
+    <aura:attribute name="fileName" type="String" default="{!$Label.c.NoFileSelected}"/>
+    <aura:attribute name="showContentFolders" type="ContentFolder"/>
+    <aura:attribute name="ltngSpinner" type="String" default=""/>
+    <aura:attribute name="showHideUploadButton" type="Boolean" default="true"/>
+    <aura:attribute name="libraryId" type="String"/>
+    <aura:attribute name="LibName" type="String"/>
+    <aura:attribute name="folderId" type="String"/>
+    <aura:attribute name="checkBoxSelected" type="String"/>
+    
+    <aura:handler name="init" value="{!this}" action="{!c.doinitDownload}"/>
+    
+    <aura:attribute name="selectedFiles" type="String"/>
+    <aura:attribute name="filesPerFolder" type="Map" />
+    <aura:attribute name="showSelectAllByDefault" type="String" />
+    
+    <aura:handler event="force:navigateToSObject" action="{!c.navigateToRecord}"/>
+    
+    <aura:attribute name="AllFildersInGivenLibrary" type="allOpportunityFiles" />
+    
+    
+    <aura:if isTrue="{!v.ltngSpinner}">
+        	<div class="exampleHolder">
+                <lightning:spinner aura:id="mySpinner" />
+            </div>
+    </aura:if> 
+    
+    <aura:if isTrue="{!v.AllFildersInGivenLibrary}">
+        <lightning:card title="" >
+            <div>
+            	<lightning:icon iconName="doctype:library_folder"   size="large" /> &nbsp;<b>{!v.LibName}</b>
+                <aura:if isTrue="{!v.checkBoxSelected}">
+                    <button class="slds-button slds-button_neutral btnRt" label="Download" title="Download" > <lightning:icon iconName="utility:download" size="x-small"/>&nbsp; <a href="{!'/sfc/servlet.shepherd/document/download/'+v.checkBoxSelected}" > {!$Label.c.Download}</a></button>
+                    <aura:set attribute="else">
+                        <button class="slds-button slds-button_neutral btnRt" disabled="true" label="Download" title="Download" ><lightning:icon iconName="utility:download" size="x-small"/>&nbsp; <a href="" target="_blank">{!$Label.c.Download}</a></button>
+                    </aura:set>
+                </aura:if>
+            </div>
+            
+            <div class="slds-m-around--medium">
+                <section id="accordion" >
+                    <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders}">
+                        <div>
+                            <input type="radio" checked="checked" name="accordion-role" id="unfoldered" onclick="{!c.makeSelectAllButtonVisible}"/> 
+                            <!--<button class="slds-button slds-button_neutral btnRt " id="unfolderedFileButton" label="Select All" title="Neutral action" onclick="{!c.selectAll}">Select All</button>-->
+                            <aura:if isTrue="{!v.showSelectAllByDefault}">
+                                <!--<lightning:button class="btnRt" aura:id="actionButton" disabled="false" label="unfoldered" title="Select All" onclick="{!c.selectAll}">Select All</lightning:button>-->
+                                <lightning:input class="avoidCheckboxBorder btnRt" aura:id="actionButton" disabled="false" type="checkbox" value="unfoldered" name="togglevalue" onchange="{!c.selectAll}" />
+                                <aura:set attribute="else">
+                                    <!--<lightning:button class="btnRt" aura:id="actionButton" disabled="true" label="unfoldered" title="Select All" onclick="{!c.selectAll}">Select All</lightning:button>-->
+                                    <lightning:input class="avoidCheckboxBorder btnRt" aura:id="actionButton" disabled="true" type="checkbox" value="unfoldered" name="togglevalue" onchange="{!c.selectAll}" />
+                                </aura:set>
+                            </aura:if>
+                            
+                            <label for="unfoldered" class="folderBackGround"><c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#folder" category="standard" size="small" name="user" />&nbsp; {!$Label.c.OpportunityUnfolderedFiles} </label> 
+                            <article>
+                                <div class="slds-p-around--medium"> 
+                                    <table class="slds-table slds-max-medium-table_stacked-horizontal slds-no-row-hover">
+                                        <tbody>
+                                            <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders.length>0}">
+                                                <aura:iteration items="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders}" var="contentDocument">
+                                                    <tr>
+                                                        <th scope="row">
+                                                            <div class="slds-truncate">
+                                                                
+                                                                <ul class="slds-list--horizontal" style="list-style: none;">
+                                                                    <li class="slds-list__item">
+                                                                        <lightning:input class="avoidCheckboxBorder" aura:id="inputToggle" type="checkbox" name="togglevalue" value="{!contentDocument.fileId}" onchange="{!c.getSelectedFilesToDwnld}" /> 
+                                                                    </li>
+                                                                    <li class="slds-list__item">
+                                                                        <c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#file" category="standard" size="small" name="user" />&nbsp;
+                                                                    </li>
+                                                                    <li class="slds-list__item">
+                                                                        <a id="{!contentDocument.fileId}" onclick="{!c.navigateToDocumentDownload}">{!contentDocument.fileName}</a>
+                                                                    </li>
+                                                                </ul>
+                                                                
+                                                            </div>
+                                                        </th>
+                                                    </tr>
+                                                </aura:iteration>
+                                                <aura:set attribute="else">
+                                                    {!$Label.c.NoFilesStoredInThisFolder}
+                                                </aura:set>
+                                            </aura:if>
+                                        </tbody>
+                                    </table>
+                                </div>     
+                            </article>
+                        </div>
+                    </aura:if>
+                    
+                    <!-- iteration for folders-->
+                    
+                    <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityContentFolders}">
+                        <aura:iteration items="{!v.AllFildersInGivenLibrary.opportunityContentFolders}" var="showContentFolders">
+                            <div >    
+                                <input type="radio" checked="checked" name="accordion-role" id="{!showContentFolders.lstOfFolders.Id}" onclick="{!c.makeSelectAllButtonVisible}"/> 
+                                
+                                <lightning:input class="avoidCheckboxBorder btnRt" aura:id="actionButton" disabled="true" type="checkbox" value="{!showContentFolders.lstOfFolders.Id}" name="togglevalue" onchange="{!c.selectAll}" />
+                                
+                                <label for="{!showContentFolders.lstOfFolders.Id}" class="folderBackGround"><c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#folder" category="standard" size="small" name="user" />&nbsp; {!showContentFolders.lstOfFolders.Name} </label> 
+                                <article>
+                                    <div class="slds-p-around--medium"> 
+                                        <table class="slds-table slds-max-medium-table_stacked-horizontal slds-no-row-hover">
+                                            <tbody>
+                                                <aura:if isTrue="{!showContentFolders.contentDocumentItem}">
+                                                    <!-- for files under folders-->
+                                                    <aura:iteration items="{!showContentFolders.contentDocumentItem}" var="contentDocument">
+                                                        <tr>
+                                                            <th scope="row">
+                                                                <div class="slds-truncate">
+                                                                    
+                                                                    <ul class="slds-list--horizontal" style="list-style: none;">
+                                                                        <li class="slds-list__item">
+                                                                            <lightning:input class="avoidCheckboxBorder" aura:id="inputToggle" type="checkbox" name="togglevalue" value="{!contentDocument.Id}" onchange="{!c.getSelectedFilesToDwnld}" />
+                                                                        </li>
+                                                                        <li class="slds-list__item">
+                                                                            <c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#file" category="standard" size="small" name="user" />&nbsp;
+                                                                        </li>
+                                                                        <li class="slds-list__item">
+                                                                            <a id="{!contentDocument.Id}" onclick="{!c.navigateToDocumentDownload}">{!contentDocument.Title}</a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </th>
+                                                        </tr>
+                                                    </aura:iteration>
+                                                    <aura:set attribute="else">
+                                                        {!$Label.c.NoFilesStoredInThisFolder}
+                                                    </aura:set>
+                                                </aura:if>
+                                            </tbody>
+                                        </table>
+                                    </div>     
+                                </article>
+                            </div>
+                        </aura:iteration>
+                    </aura:if>
+                </section>
+            </div>
+        </lightning:card>
+        <aura:set attribute="else">
+            {!$Label.c.UnfortunatelyThereWasNoLibraryFound}
+        </aura:set>
+     </aura:if>
+    <!--<a href="{!'/sfc/servlet.shepherd/document/download/'+'0696E000000IbchQAC/0696E000000INbkQAG?'}" target="_blank">DOWNLOAD</a>-->
+</aura:component>
+
+
+
+
+==============================================================================================================
+
+
+
+({
+	doinitDownload : function(component, event, helper) {
+        component.set("v.ltngSpinner","yes");
+		helper.showFoldersDownload(component, event);
+        console.log('dwnlds');
+	},
+    navigateToDocumentDownload : function (component, event, helper) {
+        var navEvt = $A.get("e.force:navigateToSObject");
+        navEvt.setParams({
+          "recordId": event.target.id,
+          "slideDevName": "related"
+        });
+        navEvt.fire();
+    },
+    getSelectedFilesToDwnld : function (component, event, helper) {
+        var numberOfFiles = component.find('inputToggle').length;
+        var i=0;
+        var selectedValues = [];
+        console.log('log ::start Single '+component.get("v.checkBoxSelected"));
+        if(numberOfFiles==undefined && component.find('inputToggle')!=undefined){
+            if(component.find('inputToggle').get('v.checked')==true){
+                component.set("v.checkBoxSelected",component.find('inputToggle').get("v.value"));
+            }else{
+                component.set("v.checkBoxSelected",'');
+            }
+            return;
+        }
+        for(i=0;i<numberOfFiles;i++){
+            console.log(' true :: '+component.find('inputToggle')[i].get('v.checked')==true);
+            if(component.find('inputToggle')[i].get('v.checked')){
+                if(selectedValues.includes(component.find('inputToggle')[i].get('v.value'))){
+                    
+                }else{
+                    selectedValues.push(component.find('inputToggle')[i].get('v.value'));
+                }
+                console.log('selected :: '+component.find('inputToggle')[i].get('v.value'));
+            }else if(selectedValues.includes(component.find('inputToggle')[i].get('v.value'))){
+                selectedValues.splice(selectedValues.indexOf(component.find('inputToggle')[i].get('v.value')), 1); 
+            }
+        }
+        if(selectedValues.length>0){
+              component.set("v.checkBoxSelected",selectedValues.toString().split(',').join('/')+'?');
+        }else{
+            component.set("v.checkBoxSelected",'');
+        }
+        console.log('log ::end Single '+component.get("v.checkBoxSelected"));
+    },
+    selectAll : function (component, event, helper) {
+        var filesPerFolder = component.get('v.filesPerFolder');
+        var i=0;
+        console.log('filesPerFolder :: '+filesPerFolder[event.getSource().get("v.value")]);
+        
+        var noOfCheckBoxes = component.find('inputToggle').length;
+        var addOrRemoveFromAlreadySelectedFiles=[];
+        if(component.get("v.checkBoxSelected")!=undefined && component.get("v.checkBoxSelected")!=''){
+            addOrRemoveFromAlreadySelectedFiles = component.get("v.checkBoxSelected").replace('?','').split('/');
+        }
+        
+        console.log('log ::start '+component.get("v.checkBoxSelected")+' addOrRemoveFromAlreadySelectedFiles :'+addOrRemoveFromAlreadySelectedFiles);
+        if(event.getSource().get('v.checked')){
+            if(filesPerFolder!=undefined && filesPerFolder[event.getSource().get("v.value")] != undefined){
+                if(noOfCheckBoxes==undefined && component.find('inputToggle') != undefined){
+                    component.find('inputToggle').set('v.checked',true);
+                    component.set("v.checkBoxSelected",filesPerFolder[event.getSource().get("v.value")]+'?');
+                }else{
+                    var inputCheckBoxes = component.find('inputToggle');
+                    var allFilesInFolder = filesPerFolder[event.getSource().get("v.value")].split(',');
+                    for(i=0;i<noOfCheckBoxes;i++){
+                        if(allFilesInFolder.includes(inputCheckBoxes[i].get('v.value'))){
+                            inputCheckBoxes[i].set('v.checked',true);
+                        }
+                    }
+                    if(allFilesInFolder!=''){
+                        if(addOrRemoveFromAlreadySelectedFiles.length>0){
+                            component.set("v.checkBoxSelected",addOrRemoveFromAlreadySelectedFiles.concat(allFilesInFolder).join('/')+'?');
+                        }else{
+                            component.set("v.checkBoxSelected",allFilesInFolder.join('/')+'?');
+                        }
+                    }
+                }
+            }
+        }else{
+            if(filesPerFolder!=undefined && filesPerFolder[event.getSource().get("v.value")] != undefined){
+                if(noOfCheckBoxes==undefined && component.find('inputToggle') != undefined){
+                    component.find('inputToggle').set('v.checked',true);
+                    component.set("v.checkBoxSelected",'');
+                }else{
+                    
+                    var inputCheckBoxes = component.find('inputToggle');
+                    var allFilesInFolder = filesPerFolder[event.getSource().get("v.value")].split(',');
+                    for(i=0;i<noOfCheckBoxes;i++){
+                        if(allFilesInFolder.includes(inputCheckBoxes[i].get('v.value'))){
+                            inputCheckBoxes[i].set('v.checked',false);
+                        }
+                    }
+                    i=0;
+                    if(allFilesInFolder!=''){
+                        if(addOrRemoveFromAlreadySelectedFiles.length>0){
+                            for(i=0;i<allFilesInFolder.length;i++){
+                                if(addOrRemoveFromAlreadySelectedFiles.includes(allFilesInFolder[i])){
+                                    addOrRemoveFromAlreadySelectedFiles.splice(addOrRemoveFromAlreadySelectedFiles.indexOf(allFilesInFolder[i]),1);
+                                }
+                            }
+                            
+                            component.set("v.checkBoxSelected",addOrRemoveFromAlreadySelectedFiles.length>0?addOrRemoveFromAlreadySelectedFiles.join('/')+'?':'');
+                        }else{
+                            component.set("v.checkBoxSelected",allFilesInFolder.join('/')+'?');
+                        }
+                    }
+                }
+            }
+        }
+        console.log('log ::end '+component.get("v.checkBoxSelected"));
+    },
+    makeSelectAllButtonVisible : function (component, event, helper) {
+        console.log('getSourceINput :: '+event.target.id);
+        var selectedButtonId = event.target.id;
+        var numberOfButtons = component.find('actionButton').length;
+        var i=0;
+        var selectedValues = [];
+        var filesPerFolder = component.get('v.filesPerFolder');
+        console.log('test @@## :: '+JSON.stringify(filesPerFolder)+' AND '+filesPerFolder[selectedButtonId]);
+        if(numberOfButtons==undefined && component.find('actionButton')!=undefined && filesPerFolder!=undefined && filesPerFolder[selectedButtonId]!=''){
+            component.find('actionButton').set('v.disabled',false);
+        }else if(filesPerFolder!=undefined && filesPerFolder[selectedButtonId]!=undefined){
+            var btns = component.find('actionButton');
+            for(i=0;i<numberOfButtons;i++){
+                if(btns[i].get('v.value') == selectedButtonId){
+                    btns[i].set('v.disabled',false);
+                }else{
+                    btns[i].set('v.disabled',true);
+                    //btns[i].set('v.checked',false);
+                }
+            }
+        }
+    }
+})
+
+
+
+
+=============================================================================
+
+
+
+
+({
+    showFoldersDownload : function(component, event) {
+		var oppRecordId = component.get("v.recordId");
+		var action = component.get("c.retrieveContentFoldersInALibrary");
+        action.setParams({"opppId":oppRecordId}); 
+        action.setCallback(this, function(data) {
+            console.log('test :: '+data.getReturnValue().opportunityContentFolders);
+            component.set("v.ltngSpinner","");
+            if(data.getReturnValue()!=undefined && data.getReturnValue().opportunityContentFolders!=undefined &&  data.getReturnValue().opportunityContentFolders[0]!=undefined ){ 
+                component.set("v.libraryId",data.getReturnValue().opportunityContentFolders[0].libraryId);
+                
+                component.set("v.AllFildersInGivenLibrary",data.getReturnValue());
+                component.set("v.LibName",data.getReturnValue().opportunityContentFolders[0].libName);
+            }else if(data.getReturnValue()!=undefined && data.getReturnValue().opportunityFilesWithoutFolders!=undefined && data.getReturnValue().opportunityFilesWithoutFolders[0]!=undefined){
+                console.log('no files');
+                component.set('v.showSelectAllByDefault','yes');
+                component.set("v.AllFildersInGivenLibrary",data.getReturnValue());
+            }
+            this.getFilesPerFolder(component,data.getReturnValue());
+        });
+        $A.enqueueAction(action);
+	},
+    getFilesPerFolder : function(component, filesPerFolder) {
+        var mapForFilesPerFolder = {};
+        var i=0;
+        var j=0;
+        var commaSaparatedFilesId='';
+        if(filesPerFolder!=undefined && filesPerFolder.opportunityContentFolders!=undefined &&  filesPerFolder.opportunityContentFolders[0]!=undefined){
+            for(i=0;i<filesPerFolder.opportunityContentFolders.length;i++){
+                if(filesPerFolder.opportunityContentFolders[i].contentDocumentItem!=undefined){
+                    for(j=0;j<filesPerFolder.opportunityContentFolders[i].contentDocumentItem.length;j++){
+                        commaSaparatedFilesId+=filesPerFolder.opportunityContentFolders[i].contentDocumentItem[j].Id+',';
+                    }
+                    mapForFilesPerFolder[filesPerFolder.opportunityContentFolders[i].lstOfFolders.Id]=commaSaparatedFilesId;
+                    j=0;
+                    commaSaparatedFilesId='';
+                }
+            }
+            i=0;
+        }
+        if(filesPerFolder != undefined && filesPerFolder.opportunityFilesWithoutFolders != undefined && filesPerFolder.opportunityFilesWithoutFolders[0] != undefined){
+            for(i=0;i<filesPerFolder.opportunityFilesWithoutFolders.length;i++){
+                commaSaparatedFilesId+=filesPerFolder.opportunityFilesWithoutFolders[i].fileId+',';
+            }
+            mapForFilesPerFolder['unfoldered']=commaSaparatedFilesId;
+        }
+        if(mapForFilesPerFolder!='' && mapForFilesPerFolder!=undefined){
+            component.set('v.filesPerFolder',mapForFilesPerFolder);
+        }
+    }
+})
+
+
+
+=====================================================================================================
+
+
+.THIS #accordion input {
+	display: none;
+}
+.THIS #accordion label {
+	background: #f7f9fb;
+	border-radius: 4px;
+	cursor: pointer;
+	display: block;
+	margin-bottom: 2px;
+	padding: 4px 16px;
+	z-index: 20;
+    border:1px solid #eef2f6;
+}
+ 
+.THIS #accordion label:hover {
+	background: #eef2f6;
+}
+ 
+
+.THIS #accordion article {
+	background: white;
+	height:0px;
+	overflow:hidden;
+	z-index:10;
+}
+.THIS #accordion input:checked ~ article {
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+	height: auto;
+	margin-bottom: 2px;
+}
+.THIS .btnRt{
+    float: right !important;
+    margin-top: 7px !important;
+    margin-right: 10px !important;
+}
+.THIS .folderBackGround {
+    /*background: #d6e2ef !important;*/
+    height: 45px !important;
+    padding-top: 10px !important;
+}
+.THIS .avoidCheckboxBorder label{
+    border: 0 !important;
+    background: 0 !important;
+    padding: 0 !important;
+    
+} 
+.THIS .checkBoxSize{
+    width: 1.4rem !important;
+    height: 1.4rem !important;
+}
+.THIS .slds-list__item label {
+    background: 0 !important;
+    border-radius: 4px;
+    cursor: pointer;
+    display: block;
+    margin-bottom: 2px;
+    padding: 0 !important;
+    z-index: 20;
+    border: 0 !important;
+    width: 1.4rem !important;
+    height: 1.4rem !important;
+}
+
+
+
+
+==================================================================
+
+
+
+
+CTRL
+
+Same as UPLOAD
+
+
+

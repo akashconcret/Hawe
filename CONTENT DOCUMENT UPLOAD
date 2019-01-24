@@ -1,0 +1,570 @@
+CONTENT DOCUMENT UPLOAD ::---
+
+
+
+
+=====================================================================================================================
+
+
+public class OpportunityFileUploadCtrl {
+    
+    public OpportunityFileUploadCtrl(){}
+    
+     /**
+    * @description this method retrieves library for opoortunity that would be created by trigger when opp created.
+    * @param 
+    */
+    @AuraEnabled
+    public Static allOpportunityFiles  retrieveContentFoldersInALibrary(String opppId){
+        Opportunity opp = [select Name from Opportunity where Id=:opppId];
+        List<ContentWorkspace> lstOfContentWorkspace = [select id,Name from ContentWorkspace where Name =:opp.Name];
+        if(lstOfContentWorkspace.size()>0){
+            return retrieveContentFolderLinks(lstOfContentWorkspace[0].Id,opp.Name,opppId);
+        }else{
+            return new allOpportunityFiles();
+        }
+    }
+    
+    
+     /**
+    * @description this method retrieves the folder associated  with library.
+    * @param 
+    */
+    public Static allOpportunityFiles retrieveContentFolderLinks(String contentWorkspaceId,String libName,String opppId){
+        List<ContentFolderLink> contentFolderLink = [Select Id , ContentFolderId , ParentEntityId from ContentFolderLink where ParentEntityId =: contentWorkspaceId];
+        return retrieveContentFolders(contentFolderLink[0].ContentFolderId,contentWorkspaceId,libName,opppId);
+    }
+    /**
+    * @description this method provides a list of wrapper class that holds 'contentFolder',library Name and Id && 'added file in that folder' for
+    *               the particular workspace/Library.
+    * @param 
+    */
+    public Static allOpportunityFiles  retrieveContentFolders(String ContentFolderId,String contentWorkspaceId,String contentWorkspaceName,String opppId){
+        List<String> lstStr = new List<String>();
+        map<id,ContentFolder> mapContentFolder = new map<id,ContentFolder>();
+        List<allOpportunityFiles.opportunityContentFolders> lstopportunityContentFolders = new List<allOpportunityFiles.opportunityContentFolders>();
+        List<allOpportunityFiles.opportunityFilesWithoutFolders> lstopportunityFilesWithoutFolders = new List<allOpportunityFiles.opportunityFilesWithoutFolders>();
+        
+        Set<id> setForAllOppFiles = new Set<id>();
+        
+        Map<id,List<ContentFolderItem>> mapContentFolderItem = new Map<id,List<ContentFolderItem>>();
+        List<ContentFolder> lstContentFolder =  [Select Id,name, ParentContentFolderId from ContentFolder where ParentContentFolderId =: ContentFolderId];
+       
+        for(ContentFolder cf : lstContentFolder){
+            lstStr.add(cf.Id);
+            mapContentFolder.put(cf.Id,cf);
+        }
+        List<ContentFolderItem> ContentFolderItem = [SELECT ParentContentFolderId, Id, IsFolder, Title,FileExtension,FileType FROM ContentFolderItem where ParentContentFolderId IN: mapContentFolder.keyset()];
+        
+        for(ContentFolderItem folderItem : ContentFolderItem){
+            if(mapContentFolderItem.containsKey(folderItem.ParentContentFolderId)){
+                mapContentFolderItem.get(folderItem.ParentContentFolderId).add(folderItem); 
+                
+            }else{
+                mapContentFolderItem.put(folderItem.ParentContentFolderId,new List<ContentFolderItem>{folderItem});
+            }
+        }
+        List<ContentDocumentLink> lstContentDocumentLink = [Select id, ContentDocumentId  from ContentDocumentLink where LinkedEntityId=:opppId OR LinkedEntityId=:contentWorkspaceId];
+        
+        if(!lstContentDocumentLink.isEmpty()){
+            for(ContentDocumentLink cdLink : lstContentDocumentLink){
+                setForAllOppFiles.add(cdLink.ContentDocumentId);
+            }
+        }
+        for(List<ContentFolderItem> lstFolderItems : mapContentFolderItem.values()){
+            for(ContentFolderItem folderItem :lstFolderItems){
+                if(!setForAllOppFiles.isEmpty() && setForAllOppFiles.contains(folderItem.Id)){
+                    setForAllOppFiles.remove(folderItem.Id);
+                }
+            }
+        }
+        if(setForAllOppFiles.size()>0){
+            for(contentDocument cd: [select id,Title from contentDocument where Id=:setForAllOppFiles]){
+                lstopportunityFilesWithoutFolders.add(new allOpportunityFiles.opportunityFilesWithoutFolders(cd.Id,cd.Title));
+            }
+        }
+        for(ContentFolder cf : lstContentFolder){
+            lstopportunityContentFolders.add(new allOpportunityFiles.opportunityContentFolders(cf,contentWorkspaceId,mapContentFolderItem.get(cf.Id),contentWorkspaceName));
+        }
+        return new allOpportunityFiles(lstopportunityFilesWithoutFolders,lstopportunityContentFolders);
+    }
+    
+    
+    /**
+    * @description This method uploads file for oppportunity in related library/folder.
+    * @param 
+    */
+    @AuraEnabled
+    public static string saveFileForOpportunity(string folderId,String oppRecordId,String fileName, String base64Data, String contentType,String libraryId){
+        return OpportunityFileUploadDmlManager.saveFileForOpportunity(folderId,oppRecordId,fileName,base64Data,contentType,libraryId);
+    }
+}
+
+
+
+
+
+==========================================================
+Upload Component 
+
+<aura:component controller="OpportunityFileUploadCtrl" access="global" implements="force:appHostable,flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickAction,forceCommunity:availableForAllPageTypes">
+    <aura:attribute name="fileName" type="String" default="{!$Label.c.NoFileSelected}"/>
+    <aura:attribute name="showContentFolders" type="ContentFolder"/>
+    <aura:attribute name="ltngSpinner" type="String" default=""/>
+    <aura:attribute name="showHideUploadButton" type="Boolean" default="true"/>
+    <aura:attribute name="libraryId" type="String"/>
+    <aura:attribute name="LibName" type="String"/>
+    <aura:attribute name="folderId" type="String"/>
+    <aura:handler event="force:navigateToSObject" action="{!c.navigateToRecord}"/>
+    <aura:attribute name="WhenDowloadingFiles" type="String"/>
+    <aura:attribute name="isOpen" type="boolean" default="false"/> 
+    <aura:attribute name="AllFildersInGivenLibrary" type="allOpportunityFiles" />
+    <aura:handler name="init" value="{!this}" action="{!c.doinit}"/>
+    
+    <aura:if isTrue="{!v.ltngSpinner}">
+        	<div class="exampleHolder">
+                <lightning:spinner aura:id="mySpinner" />
+            </div>
+    </aura:if> 
+    
+    <aura:if isTrue="{!v.AllFildersInGivenLibrary}">
+        <lightning:card title="" >
+            <lightning:icon iconName="doctype:library_folder"   size="large" ></lightning:icon> &nbsp;<b>{!v.LibName} </b>
+            <div class="slds-scrollable" style="height: 15rem">
+               <div class="slds-text-longform">
+                    <div class="slds-m-around--medium">
+                        <section id="accordion" >
+                            <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders}">
+                                <div>
+                                    <input type="radio" checked="checked" name="accordion-role" id="unfolderedUpload" /> 
+                                    <!--<button class="slds-button slds-button_neutral btnRt " id="{!v.libraryId}" label="Add Files" title="Neutral action" onclick="{!c.openModelToAddUnfolderedFiles}">{!$Label.c.AddFiles}</button>-->
+                                    <label for="unfolderedUpload" class="folderBackGround"><c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#folder" category="standard" size="small" name="user" />&nbsp; Opportunity Unfoldered Files </label> 
+                                    <article>
+                                        <div class="slds-p-around--medium"> 
+                                            <table class="slds-table slds-max-medium-table_stacked-horizontal slds-no-row-hover">
+                                                <tbody>
+                                                    <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders.length>0}">
+                                                        <aura:iteration items="{!v.AllFildersInGivenLibrary.opportunityFilesWithoutFolders}" var="contentDocument">
+                                                            <tr>
+                                                                <th scope="row">
+                                                                    <div class="slds-truncate">
+                                                                        
+                                                                        <ul class="slds-list--horizontal" style="list-style: none;">
+                                                                            
+                                                                            <li class="slds-list__item">
+                                                                                <c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#file" category="standard" size="small" name="user" />&nbsp;
+                                                                            </li>
+                                                                            <li class="slds-list__item">
+                                                                                <a id="{!contentDocument.fileId}" onclick="{!c.navigateToDocument}">{!contentDocument.fileName}</a>
+                                                                            </li>
+                                                                        </ul>
+                                                                        
+                                                                    </div>
+                                                                </th>
+                                                            </tr>
+                                                        </aura:iteration>
+                                                        <aura:set attribute="else">
+                                                            {!$Label.c.NoFilesStoredInThisFolder}
+                                                        </aura:set>
+                                                    </aura:if>
+                                                </tbody>
+                                            </table>
+                                        </div>     
+                                    </article>
+                                </div>
+                                
+                            </aura:if>
+                            
+                            <aura:if isTrue="{!v.AllFildersInGivenLibrary.opportunityContentFolders}">
+                                <aura:iteration items="{!v.AllFildersInGivenLibrary.opportunityContentFolders}" var="showContentFolders">
+                                    <div >	
+                                        <input type="radio" checked="checked" name="accordion-role" id="{!showContentFolders.lstOfFolders.Name+'dwnld'}" /> 
+                                        <button class="slds-button slds-button_neutral btnRt " id="{!showContentFolders.lstOfFolders.Id+'upload'}" label="Add Files" title="Neutral action" onclick="{!c.openModel}">{!$Label.c.AddFiles}</button>
+                                        <label for="{!showContentFolders.lstOfFolders.Name+'dwnld'}" class="folderBackGround"><c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#folder" category="standard" size="small" name="user" />&nbsp; {!showContentFolders.lstOfFolders.Name} </label> 
+                                        <article>
+                                            <div class="slds-p-around--medium"> 
+                                                <table class="slds-table slds-max-medium-table_stacked-horizontal slds-no-row-hover">
+                                                    <tbody>
+                                                        <aura:if isTrue="{!showContentFolders.contentDocumentItem}">
+                                                            <aura:iteration items="{!showContentFolders.contentDocumentItem}" var="contentDocument">
+                                                                <tr>
+                                                                    <th scope="row">
+                                                                        <div class="slds-truncate" title="{!contentDocument.Title}"><c:svgIcon svgPath="/resource/LightninigDesignSystem/icons/standard-sprite/svg/symbols.svg#file" category="standard" size="small" name="user" />&nbsp;<a id="{!contentDocument.Id}" onclick="{!c.navigateToDocument}">{!contentDocument.Title}</a></div>
+                                                                    </th>
+                                                                </tr>
+                                                            </aura:iteration>
+                                                            <aura:set attribute="else">
+                                                                {!$Label.c.NoFilesStoredInThisFolder}
+                                                            </aura:set>
+                                                        </aura:if>
+                                                    </tbody>
+                                                </table>
+                                            </div>     
+                                        </article>
+                                    </div>
+                                </aura:iteration>
+                            </aura:if>
+                        </section>
+                    </div>
+               </div>
+             </div>
+        </lightning:card>
+        <aura:set attribute="else">
+            {!$Label.c.UnfortunatelyThereWasNoLibraryFound}
+        </aura:set>
+     </aura:if>
+    
+    <aura:if isTrue="{!v.isOpen}">
+       <!--###### MODAL BOX Start From Here ######--> 
+          <div role="dialog" tabindex="-1" aria-labelledby="header99" class="slds-modal slds-fade-in-open ">
+            <div class="slds-modal__container">
+              <!-- ###### MODAL BOX HEADER Part Start From Here ######-->
+              <div class="slds-modal__header">
+                <button class="slds-button slds-modal__close slds-button--icon-inverse" title="Close" onclick="{!c.closeModel}">
+                	X
+                <span class="slds-assistive-text">Close</span>
+                </button>
+                <h2 id="header99" class="slds-text-heading--medium">{!$Label.c.UploadFile}</h2>
+              </div>
+              <!--###### MODAL BOX BODY Part Start From Here ######-->
+              <div class="slds-modal__content slds-p-around--medium">
+                        <lightning:input aura:id="fileId" onchange="{!c.handleFilesChange}" type="file" name="file" label="{!$Label.c.UploadFile}" multiple="false"/>
+                        <div class="slds-text-body_small slds-text-color_error">{!v.fileName} </div>
+              </div>
+              <!--###### MODAL BOX FOOTER Part Start From Here ######-->
+              <div class="slds-modal__footer">
+                <button class="slds-button slds-button--neutral" onclick="{!c.closeModel}" >{!$Label.c.Cancel_NotManaged}</button>
+                <button class="slds-button slds-button--brand" disabled="{!v.showHideUploadButton}" onclick="{!c.save}">{!$Label.c.UploadFile}</button>
+              </div>
+            </div>
+          </div>
+          <div class="slds-backdrop slds-backdrop--open"></div>
+          <!--###### MODAL BOX Part END Here ######-->
+ </aura:if>
+    <!--<a href="{!'/sfc/servlet.shepherd/document/download/'+'0696E000000IbchQAC/0696E000000INbkQAG?'}" target="_blank">DOWNLOAD</a>-->
+</aura:component>
+
+
+=============================================================================
+
+
+
+({
+	doinit : function(component, event, helper) {
+        component.set("v.WhenDowloadingFiles","yes");
+        component.set("v.ltngSpinner","yes");
+		helper.showFolders(component, event);
+        console.log('upload');
+	},
+    handleFilesChange: function(component, event, helper) {
+        var fileName = 'No File Selected..';
+        if (event.getSource().get("v.files").length > 0) {
+            fileName = event.getSource().get("v.files")[0]['name'];
+            component.set("v.fileName",fileName);
+            component.set("v.showHideUploadButton", false);
+        }
+    },
+    
+    handleFolderSelectionChange: function(component, event, helper) {
+        component.set("v.showHideUploadButton", false);
+    },
+    save : function(component, event, helper) {
+        component.set("v.isOpen","false");
+        component.set("v.ltngSpinner","yes");
+        var MAX_FILE_SIZE = 4500000; //Max file size 4.5 MB 
+        var fileInput = component.find("fileId").get("v.files");
+    	var file = fileInput[0];
+        if (file.size > 4500000) {
+            /*alert('File size cannot exceed ' + this.MAX_FILE_SIZE + ' bytes.\n' +
+    	          'Selected file size: ' + file.size);
+            component.set("v.ltngSpinner","");
+    	    return;*/
+        }
+        var fr = new FileReader();
+        var self = this;
+       	fr.onload = function() {
+            var fileContents = fr.result;
+    	    var base64Mark = 'base64,';
+            var dataStart = fileContents.indexOf(base64Mark) + base64Mark.length;
+            fileContents = fileContents.substring(dataStart);
+    	    helper.upload(component, file, fileContents);
+        };
+        fr.readAsDataURL(file);
+    },
+    closeModel :function(component, event, helper) {
+        component.set("v.isOpen","false");
+    },
+    openModel :function(component, event, helper) {
+        component.set("v.isOpen","true");
+        //event.getSource().get("v.folderId");
+        console.log('event.target :: '+(event.target.id).replace('upload',''));
+        component.set("v.folderId",(event.target.id).replace('upload',''));
+    },
+    openModelToAddUnfolderedFiles :function(component, event, helper) {
+        component.set("v.isOpen","true");
+        //event.getSource().get("v.folderId");
+        
+        component.set("v.folderId",'');
+    },
+    navigateToDocument : function (component, event, helper) {
+        var navEvt = $A.get("e.force:navigateToSObject");
+        navEvt.setParams({
+          "recordId": event.target.id,
+          "slideDevName": "related"
+        });
+        navEvt.fire();
+    }
+})
+
+
+
+
+===========================================================================================
+
+
+({
+	upload: function(component, file, fileContents) {
+        var action = component.get("c.saveFileForOpportunity"); 
+        var selectedFolder = component.get("v.folderId");
+        console.log('selectedFolder :: '+selectedFolder);
+        var oppRecordId = component.get("v.recordId");
+        var libId = component.get("v.libraryId");
+        console.log('fileName . :: '+file.name);
+        
+        var pos = (file.name).lastIndexOf('.');
+        console.log('pos :: '+pos);
+        
+        action.setParams({
+            				"folderId":selectedFolder,
+            				"oppRecordId":oppRecordId,
+            				"fileName": file.name,
+           					"libraryId": libId,
+                            "base64Data": encodeURIComponent(fileContents), 
+                            "contentType": file.type
+                         }); 
+        action.setCallback(this, function(data) {
+            console.log(data.getReturnValue());
+            component.set("v.ltngSpinner","");
+            this.showFolders(component, event);
+            this.showSuccessToast(component, event);
+            
+        });
+        $A.enqueueAction(action);
+    },
+    showSuccessToast : function(component, event) {
+        var toastEvent = $A.get("e.force:showToast");
+        toastEvent.setParams({
+            title : 'Success Message',
+            message: $A.get("$Label.c.FileHasBeenUploadedSuccessfully "),
+            messageTemplate: 'Record {0} created! See it {1}!',
+            duration:' 5000',
+            key: 'info_alt',
+            type: 'success',
+            mode: 'pester'
+        });
+        toastEvent.fire();
+    },
+    showFolders : function(component, event) {
+		var oppRecordId = component.get("v.recordId");
+		var action = component.get("c.retrieveContentFoldersInALibrary");
+        action.setParams({"opppId":oppRecordId}); 
+        action.setCallback(this, function(data) {
+            component.set("v.ltngSpinner","");
+            if(data.getReturnValue()!=undefined && data.getReturnValue().opportunityContentFolders!=undefined && data.getReturnValue().opportunityContentFolders[0]!=undefined){
+                component.set("v.libraryId",data.getReturnValue().opportunityContentFolders[0].libraryId);
+                component.set("v.AllFildersInGivenLibrary",data.getReturnValue());
+                component.set("v.LibName",data.getReturnValue().opportunityContentFolders[0].libName);
+            }else if(data.getReturnValue()!=undefined && data.getReturnValue().opportunityFilesWithoutFolders!=undefined &&  data.getReturnValue().opportunityFilesWithoutFolders[0]!=undefined){
+                console.log('no files');
+                component.set("v.AllFildersInGivenLibrary",data.getReturnValue());
+            }
+        });
+        $A.enqueueAction(action);
+	}
+})
+
+
+
+
+======================================================================================
+
+
+
+.THIS #accordion input {
+	display: none;
+}
+.THIS #accordion label {
+	background: #f7f9fb;
+	border-radius: 4px;
+	cursor: pointer;
+	display: block;
+	margin-bottom: 2px;
+	padding: 4px 16px;
+	z-index: 20;
+    border:1px solid #eef2f6;
+}
+ 
+.THIS #accordion label:hover {
+	background: #eef2f6;
+}
+ 
+
+.THIS #accordion article {
+	background: white;
+	height:0px;
+	overflow:hidden;
+	z-index:10;
+}
+.THIS #accordion input:checked ~ article {
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+	height: auto;
+	margin-bottom: 2px;
+}
+.THIS .btnRt{
+    float: right !important;
+    margin-top: 7px !important;
+    margin-right: 10px !important;
+}
+.THIS .folderBackGround {
+    /*background: #d6e2ef !important;*/
+    height: 45px !important;
+    padding-top: 10px !important;
+}
+
+
+
+
+=========================================================================================================================================================
+
+
+
+
+Wrapper 
+
+
+
+
+
+public class allOpportunityFiles{
+    @AuraEnabled
+    public List<opportunityFilesWithoutFolders> opportunityFilesWithoutFolders;
+    @AuraEnabled
+    public List<opportunityContentFolders> opportunityContentFolders;
+    
+    public allOpportunityFiles(){}
+    
+    public allOpportunityFiles(List<opportunityFilesWithoutFolders> opportunityFilesWithoutFolders,List<opportunityContentFolders> opportunityContentFolders){
+        this.opportunityFilesWithoutFolders = opportunityFilesWithoutFolders;
+        this.opportunityContentFolders = opportunityContentFolders;
+    }
+    
+    public class opportunityFilesWithoutFolders {
+        @AuraEnabled
+        public Id fileId;
+        @AuraEnabled
+        public String fileName;
+        
+        public opportunityFilesWithoutFolders(Id fileId,String fileName){
+            this.fileId = fileId;
+            this.fileName = fileName;
+        }
+    }
+    
+    public class opportunityContentFolders {
+        @AuraEnabled
+        public ContentFolder lstOfFolders;
+        @AuraEnabled
+        public String libraryId;
+        @AuraEnabled
+        public List<ContentFolderItem> contentDocumentItem;
+        @AuraEnabled
+        public String libName;
+        
+        public opportunityContentFolders(ContentFolder lstOfFolders,String libraryId,List<ContentFolderItem> contentDocumentItem,String libName){
+            this.lstOfFolders = lstOfFolders;
+            this.libraryId = libraryId;
+            this.contentDocumentItem = contentDocumentItem;
+            this.libName = libName;
+        }
+    }
+}
+
+
+
+
+============================================================================
+
+
+
+How to insert in Folder  
+
+
+
+public class OpportunityFileUploadDmlManager {
+    public OpportunityFileUploadDmlManager(){
+        
+    }
+    
+     /**
+    * @description this method first inserts a file in the oppportuniy's related library directly and then
+    * updates contentFolderMember to put tht file in folder.
+    * @param 
+    */
+    
+    public static string saveFileForOpportunity(string folderId,String oppRecordId,String fileName, String base64Data, String contentType,String libraryId){
+        base64Data = EncodingUtil.urlDecode(base64Data, 'UTF-8');
+        
+        ContentVersion cv = new ContentVersion();
+        cv.ContentLocation = 'S';
+        // cv.ContentDocumentId = contentDocumentId;
+        cv.VersionData = EncodingUtil.base64Decode(base64Data);
+        cv.Title = fileName;
+        cv.PathOnClient = filename;
+        cv.FirstPublishLocationId = oppRecordId;
+        insert cv;
+        
+        Id ContentDocumentId = [select ContentDocumentId from ContentVersion where Id=:cv.Id limit 1].ContentDocumentId;
+        
+        String contentDocumentlinkId =  insertFileInLibrary(ContentDocumentId,libraryId);
+        if(folderId!=null && folderId!=''){
+            List<ContentWorkspace> lstOfContentWorkspace = [select id,Name,RootContentFolderId from ContentWorkspace where Id =:libraryId];
+            List<contentFolderMember> member = [select id , ChildRecordId,ParentContentFolderId from contentFolderMember where ChildRecordId=:ContentDocumentId AND ParentContentFolderId=:lstOfContentWorkspace[0].RootContentFolderId];
+            
+            if(member!=null && member.size()>0){
+                member[0].ParentContentFolderId = folderId;
+                update member;
+            }
+        }
+        return ContentDocumentId;
+    }
+    
+     /**
+    * @description this method first inserts a file in the oppportuniy's related library directly and called from saveFileForOpportunity().
+    * @param 
+    */
+    public static string insertFileInLibrary(String ContentDocumentId,String LinkedEntityId){
+        contentDocumentlink link = new contentDocumentlink();
+        link.ContentDocumentId  = ContentDocumentId;
+        link.LinkedEntityId  =LinkedEntityId;
+        link.ShareType  = 'I';
+        insert link;
+        return link.Id;
+    }
+}
+
+
+
+
+
+
+==========================================================================================
+
+
+
+
+
+
+
+
+
